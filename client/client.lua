@@ -1,20 +1,80 @@
-local mainblip = nil
-local ped
+ESX = exports["es_extended"]:getSharedObject()
 
-local function Start()
-    local testBlip = AddBlipForCoord(Config.Ped.loc.x, Config.Ped.loc.y, Config.Ped.loc.x) 
-    SetBlipSprite(testBlip, Config.blip.sprite)
-    SetBlipDisplay(testBlip, Config.blip.display)
-    SetBlipScale(testBlip, Config.blip.scale)
-    SetBlipColour(testBlip, Config.blip.colour)
-    SetBlipAsShortRange(testBlip, true)
+local mainblip = nil
+local ped = nil
+local Points = {}
+local DienstVeh = nil
+local workblip = nil
+
+local function SendNotify(des, type, dur)
+    lib.notify({
+        id = des,
+        title = Config.Notify.title,
+        description = des,
+        type = type,
+        showDuration = Config.Notify.shordur,
+        icon = Config.Notify.icon,
+        duration = dur
+    })
+end
+
+RegisterNetEvent('esx:playerLoaded')
+AddEventHandler('esx:playerLoaded', function(PlayerData)
+	ESX.PlayerData = PlayerData
+	ESX.PlayerLoaded = true
+    
+    TriggerEvent(GetCurrentResourceName()..'Client:PlayerLoaded')
+end)
+
+RegisterNetEvent('esx:setJob')
+AddEventHandler('esx:setJob', function(Job)
+	ESX.PlayerData.job = Job
+	ESX.SetPlayerData('job', Job)
+
+    -- changed
+    lib.hideTextUI()
+
+    TriggerEvent(GetCurrentResourceName()..'Client:Checkjob')
+end)
+
+local function CreateBlip()
+    local MainBlip = AddBlipForCoord(Config.Ped.loc.x, Config.Ped.loc.y, Config.Ped.loc.x) 
+    SetBlipSprite(MainBlip, Config.blip.sprite)
+    SetBlipDisplay(MainBlip, Config.blip.display)
+    SetBlipScale(MainBlip, Config.blip.scale)
+    SetBlipColour(MainBlip, Config.blip.colour)
+    SetBlipAsShortRange(MainBlip, true)
     BeginTextCommandSetBlipName("STRING")
     AddTextComponentString(Config.blip.text)
-    EndTextCommandSetBlipName(testBlip)
+    EndTextCommandSetBlipName(MainBlip)
+end
 
+local function CreateWorkBlip(coords)
+    if not DoesBlipExist(workblip) then
+        workblip = AddBlipForCoord(coords.x, coords.y, coords.z)
+        SetBlipSprite(workblip, 465)
+        SetBlipColour(workblip, 1)
+        SetBlipRoute(workblip, true)
+        SetBlipScale(workblip, 0.6)
+        BeginTextCommandSetBlipName("STRING")
+        AddTextComponentString('Werk')
+        EndTextCommandSetBlipName(workblip)
+    else
+        RemoveBlip(workblip)
+    end
+end
+
+local function Createped()
     local pedhash = GetHashKey(Config.Ped.model)
 
+    if not IsModelInCdimage(pedhash) or not IsModelValid(pedhash) then
+        print("^1[ERROR]^0 Ongeldig ped model:", Config.Ped.model)
+        return
+    end
+
     RequestModel(pedhash)
+
+  
 
     while not HasModelLoaded(pedhash) do
         Wait(1)
@@ -39,13 +99,210 @@ local function Start()
     exports.ox_target:addLocalEntity(ped, {
         label = CTarget.label,
         distance = CTarget.distance,
-        icon = CTarget.icon
+        icon = CTarget.icon,
+        onSelect = function()
+            local indienst = lib.callback.await(GetCurrentResourceName()..'Server:CheckInDienst', false)
+            if indienst then
+                TriggerEvent(GetCurrentResourceName()..'Client:OpenMenu', true)
+            else
+                TriggerEvent(GetCurrentResourceName()..'Client:OpenMenu', false)
+            end
+        end
+    })
+end
+
+local function SelectJob()
+
+    local keys = {}
+    for k,_ in pairs(Config.Types) do
+        table.insert(keys, k)
+    end
+    local key = math.random(1, #keys)
+    local type = keys[key]
+    print(#Config.Work[type])
+    local locKey = math.random(#Config.Work[type])
+    local loc = Config.Work[type][locKey]
+    local werk = Config.Types[type]
+
+    SendNotify('Ga naar de locatie om een '..Config.Types[type]..' te repareren', 'info', 5000)
+    CreateWorkBlip(loc)
+    exports.ox_target:addBoxZone({
+        coords = loc,
+        name = type..'WorkingZone',
+        size = vec3(2, 2, 2),
+        rotation = 0,
+        debug = true,
+        options = {
+            label = werk.label,
+            icon = "fa-solid fa-wrench",
+            distance = 2.0,
+            onSelect = function()
+
+            end
+        }
     })
 end
 
 
+local function CreateRemovePoint()
+    local dis = 5
+    
+    if not Points['Remove'] then
+        Points['Remove'] = lib.points.new({
+            coords = Config.car.removeloc.xyz,
+            distance = dis,
+        })  
+    end
 
-Start()
+    local marker = lib.marker.new({
+        coords = Config.car.removeloc.xyz,
+        type = 2,
+        width = .3, 
+        height = .3,
+        color = { r = 255, g = 0, b = 0, a = 0.8 }
+    })
+
+    local functions = Points['Remove']
+    local dienst = true
+
+    function functions:nearby()
+        if dienst then
+            if self.currentDistance < 1.5 then
+                lib.showTextUI('Druk op E om je voertuig in te leveren')
+                marker:draw()
+                if IsControlJustReleased(0, 38) then
+                    local ped = PlayerPedId()
+                    if IsPedInAnyVehicle(ped, false) then
+                        local veh = GetVehiclePedIsIn(ped, false)
+                        if DienstVeh ~= veh then SendNotify('Dit is niet jouw dienst voertuig', 'error', 3000) return end
+                        ESX.Game.DeleteVehicle(veh)
+                        TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', false)
+                        SendNotify('Je bent nu uit dienst', 'info', 3000)
+                        Wait(100)
+                        lib.hideTextUI()
+                        TriggerServerEvent(GetCurrentResourceName()..'Server:AddBorg', Config.Borg.price)
+                        dienst = false
+                    else
+                        SendNotify('Je zit niet in een voertuig', 'error', 3000)
+                    end
+                end
+            else
+                lib.hideTextUI()
+            end
+        else
+            lib.hideTextUI()
+        end
+
+
+    end
+end
+
+Citizen.CreateThread(function ()
+    CreateBlip()
+
+    print(json.encode(ESX.PlayerData.job))
+
+    while not ESX.PlayerLoaded do
+        Citizen.Wait(100)
+    end
+
+    if ESX.PlayerData.job and ESX.PlayerData.job.name == Config.JobName then
+        print("Creating ped")
+        Createped()
+    end
+end)
+
+RegisterNetEvent(GetCurrentResourceName()..'Client:Checkjob', function ()
+    if ESX.PlayerData.job.name == Config.JobName then
+        if not ped then
+            Createped()
+        end
+    else
+        if ped then
+            DeletePed(ped)
+        end
+    end
+end)
+
+RegisterNetEvent(GetCurrentResourceName()..'Client:OpenMenu', function (indienst)
+    if not indienst then
+        lib.registerContext({
+            id = 'monteurjob-menu_on',
+            title = 'Monteur Job',
+            options = {
+                {
+                    title = 'Start shift',
+                    description = 'Begin met werken',
+                    icon = 'file',
+                    onSelect = function()
+                        if Config.Borg.Enabled then
+                            local cashAmount = exports.ox_inventory:GetItemCount('Cash')
+                            if cashAmount < Config.Borg.price then
+                                SendNotify('Je hebt niet genoeg contant geld om borg te betalen', 'error', 3000)
+                                return
+                            end
+                            SendNotify('Je hebt €'..Config.Borg.price..' borg betaald', 'info', 3000)
+                            TriggerServerEvent(GetCurrentResourceName()..'Server:RemoveBorg', Config.Borg.price)
+                            TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', true)
+                            SendNotify('Je bent nu in dienst', 'success', 3000)
+                            TaskWarpPedIntoVehicle(PlayerPedId(), DienstVeh, -1)
+                            CreateRemovePoint()
+                            DienstVeh = ESX.Game.SpawnVehicle(Config.car.model, Config.car.loc.xyz, Config.car.loc.w, nil, true)
+                            TaskWarpPedIntoVehicle(PlayerPedId(), DienstVeh, -1)
+                            CreateRemovePoint()
+                            SelectJob()
+                        else
+                            TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', true)
+                            SendNotify('Je bent nu in dienst', 'success', 3000)
+                            DienstVeh = ESX.Game.SpawnVehicle(Config.car.model, Config.car.loc.xyz, Config.car.loc.w, nil, true)
+                            TaskWarpPedIntoVehicle(PlayerPedId(), DienstVeh, -1)
+                            CreateRemovePoint()
+                            SelectJob()
+                        end
+                    end,
+                },
+            }
+        })
+        lib.showContext('monteurjob-menu_on')
+    else
+        lib.registerContext({
+            id = 'monteurjob-menu_off',
+            title = 'Monteur Job',
+            options = {
+                {
+                    title = 'Stop shift',
+                    description = 'Eindig met werken',
+                    icon = 'file',
+                    onSelect = function()
+                        if Config.Borg.Enabled then
+                            local alert = lib.alertDialog({
+                                header = 'Je krijgt je borg nu niet terug!',
+                                content = 'Lever je voertuig in om je borg terug te krijgen \n ben je zeker dat je wilt stoppen?',
+                                centered = true,
+                                cancel = true
+                            })
+                            print(alert)
+                            if alert == 'confirm' then
+                                print('uitdienst')
+                                TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', false)
+                                SendNotify('Je bent nu uit dienst', 'info', 3000)
+                            end
+                        else
+                            TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', true)
+                            SendNotify('Je bent nu in dienst', 'success', 3000)
+                            DienstVeh = ESX.Game.SpawnVehicle(Config.car.model, Config.car.loc.xyz, Config.car.loc.w, nil, true)
+                            TaskWarpPedIntoVehicle(PlayerPedId(), DienstVeh, -1)
+                            CreateRemovePoint()
+                        end
+                    end,
+                },
+            }
+        })
+        lib.showContext('monteurjob-menu_off')
+    end
+
+end)
+
 
 AddEventHandler('onResourceStop', function(resourceName)
     if (GetCurrentResourceName() ~= resourceName) then
