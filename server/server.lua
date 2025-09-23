@@ -11,7 +11,19 @@ end)
 
 RegisterNetEvent(GetCurrentResourceName()..'Server:RemoveBorg', function(amount)
     local src = source
-    exports.ox_inventory:RemoveItem(source, src, amount)
+    exports.ox_inventory:RemoveItem(source, 'cash', amount)
+end)
+
+RegisterNetEvent(GetCurrentResourceName()..'Server:GiveMoney', function(amount)
+    local src = source
+    if indienst[src] then
+        exports.ox_inventory:AddItem(src, 'cash', amount)
+    end
+end)
+
+RegisterNetEvent(GetCurrentResourceName()..'Server:AddBorg', function(amount)
+    local src = source
+    exports.ox_inventory:AddItem(src, 'cash', amount)
 end)
 
 lib.callback.register(GetCurrentResourceName()..'Server:CheckInDienst', function(source)

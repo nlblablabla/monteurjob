@@ -59,8 +59,6 @@ local function CreateWorkBlip(coords)
         BeginTextCommandSetBlipName("STRING")
         AddTextComponentString('Werk')
         EndTextCommandSetBlipName(workblip)
-    else
-        RemoveBlip(workblip)
     end
 end
 
@@ -119,12 +117,11 @@ local function SelectJob()
     end
     local key = math.random(1, #keys)
     local type = keys[key]
-    print(#Config.Work[type])
     local locKey = math.random(#Config.Work[type])
     local loc = Config.Work[type][locKey]
-    local werk = Config.Types[type]
+    local Cwerk = Config.Types[type]
 
-    SendNotify('Ga naar de locatie om een '..Config.Types[type]..' te repareren', 'info', 5000)
+    SendNotify('Ga naar de locatie om een '..type..' te repareren', 'info', 5000)
     CreateWorkBlip(loc)
     exports.ox_target:addBoxZone({
         coords = loc,
@@ -133,16 +130,47 @@ local function SelectJob()
         rotation = 0,
         debug = true,
         options = {
-            label = werk.label,
+            label = Cwerk.label,
             icon = "fa-solid fa-wrench",
             distance = 2.0,
             onSelect = function()
-
+                if lib.progressBar({
+                    duration = Cwerk.time * 1000,
+                    label = 'Bezig met repareren',
+                    useWhileDead = false,
+                    canCancel = true,
+                    disable = {
+                        car = true,
+                        move = true,
+                    },
+                    anim = {
+                        dict = "mini@repair",
+                        clip = "fixing_a_player",
+                        flag = 16,
+                    },
+                }) then
+                    SendNotify('Je hebt de '..type..' gerepareerd en €'..Cwerk.price..' verdiend', 'success', 5000)
+                    TriggerServerEvent(GetCurrentResourceName()..'Server:GiveMoney', Cwerk.price)
+                    exports.ox_target:removeZone(type..'WorkingZone')
+                    RemoveBlip(workblip)
+                    SelectJob()
+                else
+                    SendNotify('Je hebt de reparatie geannuleerd', 'error', 3000)
+                end
             end
         }
     })
 end
 
+local function StopShift()
+    TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', false)
+    SendNotify('Je bent nu uit dienst', 'info', 3000)
+    Wait(100)
+    lib.hideTextUI()
+    TriggerServerEvent(GetCurrentResourceName()..'Server:AddBorg', Config.Borg.price)
+
+    RemoveBlip(workblip)
+end
 
 local function CreateRemovePoint()
     local dis = 5
@@ -176,12 +204,8 @@ local function CreateRemovePoint()
                         local veh = GetVehiclePedIsIn(ped, false)
                         if DienstVeh ~= veh then SendNotify('Dit is niet jouw dienst voertuig', 'error', 3000) return end
                         ESX.Game.DeleteVehicle(veh)
-                        TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', false)
-                        SendNotify('Je bent nu uit dienst', 'info', 3000)
-                        Wait(100)
-                        lib.hideTextUI()
-                        TriggerServerEvent(GetCurrentResourceName()..'Server:AddBorg', Config.Borg.price)
                         dienst = false
+                        StopShift()
                     else
                         SendNotify('Je zit niet in een voertuig', 'error', 3000)
                     end
@@ -200,14 +224,12 @@ end
 Citizen.CreateThread(function ()
     CreateBlip()
 
-    print(json.encode(ESX.PlayerData.job))
 
     while not ESX.PlayerLoaded do
         Citizen.Wait(100)
     end
 
     if ESX.PlayerData.job and ESX.PlayerData.job.name == Config.JobName then
-        print("Creating ped")
         Createped()
     end
 end)
@@ -220,6 +242,7 @@ RegisterNetEvent(GetCurrentResourceName()..'Client:Checkjob', function ()
     else
         if ped then
             DeletePed(ped)
+            ped = nil
         end
     end
 end)
@@ -281,11 +304,8 @@ RegisterNetEvent(GetCurrentResourceName()..'Client:OpenMenu', function (indienst
                                 centered = true,
                                 cancel = true
                             })
-                            print(alert)
                             if alert == 'confirm' then
-                                print('uitdienst')
-                                TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', false)
-                                SendNotify('Je bent nu uit dienst', 'info', 3000)
+                                StopShift(  )
                             end
                         else
                             TriggerServerEvent(GetCurrentResourceName()..'Server:UpdateInDienst', true)
