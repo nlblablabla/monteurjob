@@ -1,5 +1,7 @@
 Config = {}
 
+Config.debug = true
+
 Config.Ped = {
     loc = vec4(535.9880, -1868.0286, 25.3320, 308.1917),
     model = 's_m_y_dockwork_01',
@@ -50,6 +52,11 @@ Config.Types = {
         time = 15,
         price = 75
     },
+    ['Elektrisch kasje'] = {
+        label = 'Elektrisch kasje repareren',
+        time = 15,
+        price = 100
+    },
 }
 
 
@@ -64,5 +71,9 @@ Config.Work = {
     ['DakGoot'] = {
         vector3(336.2847, -1830.1257, 27.9479),
         vector3(406.0484, -1748.7415, 29.3004),
+    },
+    ['Elektrisch kasje'] = {
+        vector3(-33.7223, -1721.6887, 29.2919),
+        vector3(82.0384, -1696.9966, 29.2499),
     },
 }
