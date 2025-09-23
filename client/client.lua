@@ -128,7 +128,7 @@ local function SelectJob()
         name = type..'WorkingZone',
         size = vec3(2, 2, 2),
         rotation = 0,
-        debug = true,
+        debug = Config.debug,
         options = {
             label = Cwerk.label,
             icon = "fa-solid fa-wrench",
@@ -142,6 +142,7 @@ local function SelectJob()
                     disable = {
                         car = true,
                         move = true,
+                        combat = true,
                     },
                     anim = {
                         dict = "mini@repair",
@@ -173,7 +174,7 @@ local function StopShift()
 end
 
 local function CreateRemovePoint()
-    local dis = 5
+    local dis = 10
     
     if not Points['Remove'] then
         Points['Remove'] = lib.points.new({
@@ -195,9 +196,10 @@ local function CreateRemovePoint()
 
     function functions:nearby()
         if dienst then
+            marker:draw()
             if self.currentDistance < 1.5 then
                 lib.showTextUI('Druk op E om je voertuig in te leveren')
-                marker:draw()
+                
                 if IsControlJustReleased(0, 38) then
                     local ped = PlayerPedId()
                     if IsPedInAnyVehicle(ped, false) then
